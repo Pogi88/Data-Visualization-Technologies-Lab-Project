@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BMI fit - folytatas - Pora Boglarka</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .axis-label {
+            font-size: 14px;
+            fill: #474747;
+        }
+        .bar-own {
+            fill: #2a9d8f;
+            opacity: 0.5;
+        }
+        .bar-kaggle {
+            fill: #e76f51;
+            opacity: 0.5;
+        }
+        .bar {
+            fill: #2a9d8f;
+        }
+        .scatter-plot {
+            fill: #2a9d8f;
+        }
+        .tick line {
+            display: none;
+        }
+        .x-axis path,
+        .y-axis path {
+            stroke: #474747;
+        }
+    </style>
+</head>
+<body>
+
+    <h1 style="color:#474747;">BMI fit - folytatás</h1>
+    <h3 style="color:#474747;">Készítette: Póra Boglárka</h3>
+
+    <h2 style="color:#474747;">BMI Eloszlása - Saját Adatok</h2>
+    <svg id="own-plot" width="800" height="400"></svg>
+
+    <h2 style="color:#474747;">BMI Eloszlása - Kaggle Adatok</h2>
+    <svg id="kaggle-plot" width="800" height="400"></svg>
+
+    <h2 style="color:#474747;">BMI Eloszlása - Saját és Kaggle Adatok (Normalizált)</h2>
+    <svg id="normalized-histogram" width="800" height="400"></svg>
+
+    <h2 style="color:#474747;">Testsúly vs BMI - Saját Adatok</h2>
+    <svg id="scatter-plot-own" width="800" height="400"></svg>
+
+    <h2 style="color:#474747;">Testsúly vs BMI - Kaggle Adatok</h2>
+    <svg id="scatter-plot-kaggle" width="800" height="400"></svg>
+
+    <script>
+        
+        const margin = {top: 40, right: 30, bottom: 60, left: 50},
+              width = 800 - margin.left - margin.right,
+              height = 400 - margin.top - margin.bottom;
+
+        function createHistogram(svgId, csvUrl, barClass, barColor) {
+            const svg = d3.select(svgId)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            d3.csv(csvUrl).then(function(data) {
+                data.forEach(d => d.BMI = +d.BMI); 
+
+                const x = d3.scaleLinear()
+                    .domain([d3.min(data, d => d.BMI), d3.max(data, d => d.BMI)])
+                    .range([0, width]);
+
+                const histogram = d3.histogram()
+                    .value(d => d.BMI)
+                    .domain(x.domain())
+                    .thresholds(x.ticks(30)); // 30 bins
+
+                const bins = histogram(data);
+
+                const y = d3.scaleLinear()
+                    .domain([0, d3.max(bins, d => d.length)])
+                    .range([height, 0]);
+
+                svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x))
+                    .attr("class", "x-axis");
+
+                svg.append("g")
+                    .call(d3.axisLeft(y).ticks(5))
+                    .attr("class", "y-axis");
+
+                svg.selectAll("rect")
+                    .data(bins)
+                    .enter()
+                    .append("rect")
+                    .attr("x", d => x(d.x0))
+                    .attr("y", d => y(d.length))
+                    .attr("width", d => x(d.x1) - x(d.x0) - 1)
+                    .attr("height", d => height - y(d.length))
+                    .attr("class", barClass)
+                    .style("fill", barColor);
+
+                svg.append("text")
+                    .attr("class", "axis-label")
+                    .attr("text-anchor", "end")
+                    .attr("x", width / 2 + margin.left)
+                    .attr("y", height + margin.bottom - 10)
+                    .text("BMI");
+
+                svg.append("text")
+                    .attr("class", "axis-label")
+                    .attr("text-anchor", "end")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", -margin.left + 10)
+                    .attr("x", -height / 2 + margin.top)
+                    .text("Gyakoriság");
+            });
+        }
+
+        function createNormalizedHistogram() {
+            const svg = d3.select("#normalized-histogram")
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            Promise.all([
+                d3.csv('https://raw.githubusercontent.com/vlewir/adatvizualizacio/refs/heads/main/BMI_fit_own.csv'),
+                d3.csv('https://raw.githubusercontent.com/vlewir/adatvizualizacio/refs/heads/main/BMI_fit_kaggle.csv')
+            ]).then(function([ownData, kaggleData]) {
+
+                ownData.forEach(d => d.BMI = +d.BMI);
+                kaggleData.forEach(d => d.BMI = +d.BMI);
+
+                const x = d3.scaleLinear()
+                    .domain([d3.min(ownData.concat(kaggleData), d => d.BMI), d3.max(ownData.concat(kaggleData), d => d.BMI)])
+                    .range([0, width]);
+
+                const histogram = d3.histogram()
+                    .value(d => d.BMI)
+                    .domain(x.domain())
+                    .thresholds(x.ticks(30)); 
+
+                const ownBins = histogram(ownData);
+                const kaggleBins = histogram(kaggleData);
+
+                const normalize = (bins, data) => bins.map(d => ({ ...d, length: d.length / data.length }));
+
+                const ownBinsNormalized = normalize(ownBins, ownData);
+                const kaggleBinsNormalized = normalize(kaggleBins, kaggleData);
+
+                const y = d3.scaleLinear()
+                    .domain([0, d3.max(ownBinsNormalized.concat(kaggleBinsNormalized), d => d.length)])
+                    .range([height, 0]);
+
+                svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x))
+                    .attr("class", "x-axis");
+
+                svg.append("g")
+                    .call(d3.axisLeft(y).ticks(5))
+                    .attr("class", "y-axis");
+
+                svg.selectAll(".bar-own")
+                    .data(ownBinsNormalized)
+                    .enter()
+                    .append("rect")
+                    .attr("x", d => x(d.x0))
+                    .attr("y", d => y(d.length))
+                    .attr("width", d => x(d.x1) - x(d.x0) - 1)
+                    .attr("height", d => height - y(d.length))
+                    .attr("class", "bar-own");
+
+                svg.selectAll(".bar-kaggle")
+                    .data(kaggleBinsNormalized)
+                    .enter()
+                    .append("rect")
+                    .attr("x", d => x(d.x0))
+                    .attr("y", d => y(d.length))
+                    .attr("width", d => x(d.x1) - x(d.x0) - 1)
+                    .attr("height", d => height - y(d.length))
+                    .attr("class", "bar-kaggle");
+
+                svg.append("text")
+                    .attr("class", "axis-label")
+                    .attr("text-anchor", "end")
+                    .attr("x", width / 2 + margin.left)
+                    .attr("y", height + margin.bottom - 10)
+                    .text("BMI");
+
+                svg.append("text")
+                    .attr("class", "axis-label")
+                    .attr("text-anchor", "end")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", -margin.left + 10)
+                    .attr("x", -height / 2 + margin.top)
+                    .text("Gyakoriság");
+
+                svg.append("rect")
+                    .attr("x", width - 150)
+                    .attr("y", -30)
+                    .attr("width", 20)
+                    .attr("height", 20)
+                    .attr("fill", "#2a9d8f")
+                    .attr("opacity", 0.5);
+                svg.append("text")
+                    .attr("x", width - 120)
+                    .attr("y", -15)
+                    .text("Saját")
+                    .attr("alignment-baseline", "middle");
+
+                svg.append("rect")
+                    .attr("x", width - 150)
+                    .attr("y", 0)
+                    .attr("width", 20)
+                    .attr("height", 20)
+                    .attr("fill", "#e76f51")
+                    .attr("opacity", 0.5);
+                svg.append("text")
+                    .attr("x", width - 120)
+                    .attr("y", 15)
+                    .text("Kaggle")
+                    .attr("alignment-baseline", "middle");
+
+            });
+        }
+
+        function createScatterPlot(svgId, csvUrl) {
+            const svg = d3.select(svgId)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            d3.csv(csvUrl).then(function(data) {
+                data.forEach(d => {
+                    d['Suly (kg)'] = +d['Suly (kg)'];
+                    d.BMI = +d.BMI;
+                });
+
+                const x = d3.scaleLinear()
+                    .domain([d3.min(data, d => d['Suly (kg)']), d3.max(data, d => d['Suly (kg)'])])
+                    .range([0, width]);
+
+                const y = d3.scaleLinear()
+                    .domain([d3.min(data, d => d.BMI), d3.max(data, d => d.BMI)])
+                    .range([height, 0]);
+
+                svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x))
+                    .attr("class", "x-axis");
+
+                svg.append("g")
+                    .call(d3.axisLeft(y).ticks(5))
+                    .select(".domain").remove(); 
+               
+                svg.selectAll("circle")
+                    .data(data)
+                    .enter()
+                    .append("circle")
+                    .attr("cx", d => x(d['Suly (kg)']))
+                    .attr("cy", d => y(d.BMI))
+                    .attr("r", 4)
+                    .attr("class", "scatter-plot");
+
+                svg.append("text")
+                    .attr("class", "axis-label")
+                    .attr("text-anchor", "end")
+                    .attr("x", width / 2 + margin.left)
+                    .attr("y", height + margin.bottom - 10)
+                    .text("Testsúly (kg)");
+
+                svg.append("text")
+                    .attr("class", "axis-label")
+                    .attr("text-anchor", "end")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", -margin.left + 10)
+                    .attr("x", -height / 2 + margin.top)
+                    .text("BMI");
+            });
+        }
+
+        createHistogram("#own-plot", 
+                        'https://raw.githubusercontent.com/vlewir/adatvizualizacio/refs/heads/main/BMI_fit_own.csv', 
+                        "bar", 
+                        "#2a9d8f");
+
+        createHistogram("#kaggle-plot", 
+                        'https://raw.githubusercontent.com/vlewir/adatvizualizacio/refs/heads/main/BMI_fit_kaggle.csv', 
+                        "bar", 
+                        "#e76f51");
+
+        createNormalizedHistogram();
+
+        createScatterPlot("#scatter-plot-own", 
+                          'https://raw.githubusercontent.com/vlewir/adatvizualizacio/refs/heads/main/BMI_fit_own.csv');
+
+        createScatterPlot("#scatter-plot-kaggle", 
+                          'https://raw.githubusercontent.com/vlewir/adatvizualizacio/refs/heads/main/BMI_fit_kaggle.csv');
+
+    </script>
+</body>
+</html>
